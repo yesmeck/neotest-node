@@ -223,82 +223,10 @@ local function getStrategyConfig(default_strategy_config, args)
   return default_strategy_config
 end
 
-local function cleanAnsi(s)
-  return s:gsub("\x1b%[%d+;%d+;%d+;%d+;%d+m", "")
-    :gsub("\x1b%[%d+;%d+;%d+;%d+m", "")
-    :gsub("\x1b%[%d+;%d+;%d+m", "")
-    :gsub("\x1b%[%d+;%d+m", "")
-    :gsub("\x1b%[%d+m", "")
-end
-
-local function findErrorPosition(file, errStr)
-  -- Look for: /path/to/file.js:123:987
-  local regexp = file:gsub("([^%w])", "%%%1") .. "%:(%d+)%:(%d+)"
-  local _, _, errLine, errColumn = string.find(errStr, regexp)
-
-  return errLine, errColumn
-end
-
-local function parsed_json_to_results(data, output_file, consoleOut)
-  local tests = {}
-
-  for _, testResult in pairs(data.testResults) do
-    local testFn = testResult.name
-    for _, assertionResult in pairs(testResult.assertionResults) do
-      local status, name = assertionResult.status, assertionResult.title
-
-      if name == nil then
-        logger.error("Failed to find parsed test result ", assertionResult)
-        return {}
-      end
-
-      local keyid = testFn
-
-      for _, value in ipairs(assertionResult.ancestorTitles) do
-        keyid = keyid .. "::" .. value
-      end
-
-      keyid = keyid .. "::" .. name
-
-      if status == "pending" then
-        status = "skipped"
-      end
-
-      tests[keyid] = {
-        status = status,
-        short = name .. ": " .. status,
-        output = consoleOut,
-        location = assertionResult.location,
-      }
-
-      if not vim.tbl_isempty(assertionResult.failureMessages) then
-        local errors = {}
-
-        for i, failMessage in ipairs(assertionResult.failureMessages) do
-          local msg = cleanAnsi(failMessage)
-          local errorLine, errorColumn = findErrorPosition(testFn, msg)
-
-          errors[i] = {
-            line = (errorLine or assertionResult.location.line) - 1,
-            column = (errorColumn or 1) - 1,
-            message = msg,
-          }
-
-          tests[keyid].short = tests[keyid].short .. "\n" .. msg
-        end
-
-        tests[keyid].errors = errors
-      end
-    end
-  end
-
-  return tests
-end
-
 ---@param args neotest.RunArgs
 ---@return neotest.RunSpec | nil
 function adapter.build_spec(args)
-  local results_path = async.fn.tempname() .. ".txt"
+  local results_path = async.fn.tempname()
   local tree = args.tree
 
   if not tree then
@@ -306,7 +234,7 @@ function adapter.build_spec(args)
   end
 
   local pos = args.tree:data()
-  local testNamePattern = "'.*'"
+  local testNamePattern = nil
 
   if pos.type == "test" or pos.type == "namespace" then
     -- pos.id in form "path/to/file::Describe text::test text"
@@ -326,11 +254,21 @@ function adapter.build_spec(args)
 
   local binary = args.command or getCommand(pos.path)
   local command = vim.split(binary, "%s+")
+  local reporter = util.get_reporter_path()
 
-  vim.list_extend(command, {
-    "--test-name-pattern=" .. testNamePattern,
-    escapeTestPattern(vim.fs.normalize(pos.path)),
-  })
+  local argvs = {
+    "--no-warnings",
+    "--test-reporter=" .. reporter,
+    "--test-reporter-destination=" .. results_path,
+  }
+
+  if testNamePattern then
+    table.insert(argvs, "--test-name-pattern=" .. testNamePattern)
+  end
+
+  table.insert(argvs, escapeTestPattern(vim.fs.normalize(pos.path)))
+
+  vim.list_extend(command, argvs)
 
   local cwd = getCwd(pos.path)
 
@@ -349,13 +287,14 @@ function adapter.build_spec(args)
     stream = function()
       return function()
         local new_results = stream_data()
+        print(new_results)
         local ok, parsed = pcall(vim.json.decode, new_results, { luanil = { object = true } })
 
         if not ok or not parsed.testResults then
           return {}
         end
 
-        return parsed_json_to_results(parsed, results_path, nil)
+        return {}
       end
     end,
     strategy = getStrategyConfig(
@@ -369,28 +308,33 @@ end
 ---@async
 ---@param spec neotest.RunSpec
 ---@return neotest.Result[]
-function adapter.results(spec, b, tree)
+function adapter.results(spec, result, tree)
   spec.context.stop_stream()
 
   local output_file = spec.context.results_path
 
   local success, data = pcall(lib.files.read, output_file)
 
-  if not success then
-    logger.error("No test output file found ", output_file)
-    return {}
-  end
+  print(data)
 
-  local ok, parsed = pcall(vim.json.decode, data, { luanil = { object = true } })
+  return {}
+  -- local success, data = pcall(lib.files.read, result.output)
 
-  if not ok then
-    logger.error("Failed to parse test output json ", output_file)
-    return {}
-  end
+  -- if not success then
+  --   logger.error("neotest-node: could not read output: " .. data)
+  --   return {}
+  -- end
 
-  local results = parsed_json_to_results(parsed, output_file, b.output)
+  -- local ok, parsed = pcall(vim.json.decode, data, { luanil = { object = true } })
 
-  return results
+  -- if not ok then
+  --   logger.error("Failed to parse test output json ")
+  --   return {}
+  -- end
+
+  -- print(vim.inspect(parsed))
+
+  -- return parsed
 end
 
 local is_callable = function(obj)
