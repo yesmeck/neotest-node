@@ -2,103 +2,26 @@
 local async = require("neotest.async")
 local lib = require("neotest.lib")
 local logger = require("neotest.logging")
-local util = require("neotest-jest.util")
-local jest_util = require("neotest-jest.jest-util")
-local parameterized_tests = require("neotest-jest.parameterized-tests")
+local util = require("neotest-node.util")
+local jest_util = require("neotest-node.jest-util")
+local parameterized_tests = require("neotest-node.parameterized-tests")
 
 ---@class neotest.JestOptions
----@field jestCommand? string|fun(): string
----@field jestConfigFile? string|fun(): string
+---@field command? string|fun(): string
 ---@field env? table<string, string>|fun(): table<string, string>
 ---@field cwd? string|fun(): string
 ---@field strategy_config? table<string, unknown>|fun(): table<string, unknown>
 
 ---@type neotest.Adapter
-local adapter = { name = "neotest-jest" }
+local adapter = { name = "neotest-node" }
 
 local rootPackageJson = vim.fn.getcwd() .. "/package.json"
-
----@return boolean
-local function rootProjectHasJestDependency()
-  local path = rootPackageJson
-
-  local success, packageJsonContent = pcall(lib.files.read, path)
-  if not success then
-    print("cannot read package.json")
-    return false
-  end
-
-  local parsedPackageJson = vim.json.decode(packageJsonContent)
-
-  if parsedPackageJson["dependencies"] then
-    for key, _ in pairs(parsedPackageJson["dependencies"]) do
-      if key == "jest" then
-        return true
-      end
-    end
-  end
-
-  if parsedPackageJson["devDependencies"] then
-    for key, _ in pairs(parsedPackageJson["devDependencies"]) do
-      if key == "jest" then
-        return true
-      end
-    end
-  end
-
-  return false
-end
-
----@param path string
----@return boolean
-local function hasJestDependency(path)
-  local rootPath = lib.files.match_root_pattern("package.json")(path)
-
-  if not rootPath then
-    return false
-  end
-
-  local success, packageJsonContent = pcall(lib.files.read, rootPath .. "/package.json")
-  if not success then
-    print("cannot read package.json")
-    return false
-  end
-
-  local parsedPackageJson = vim.json.decode(packageJsonContent)
-
-  if parsedPackageJson["dependencies"] then
-    for key, _ in pairs(parsedPackageJson["dependencies"]) do
-      if key == "jest" then
-        return true
-      end
-    end
-  end
-
-  if parsedPackageJson["devDependencies"] then
-    for key, _ in pairs(parsedPackageJson["devDependencies"]) do
-      if key == "jest" then
-        return true
-      end
-    end
-  end
-
-  if parsedPackageJson["scripts"] then
-    for _, value in pairs(parsedPackageJson["scripts"]) do
-      if value == "jest" then
-        return true
-      end
-    end
-  end
-
-  return rootProjectHasJestDependency()
-end
 
 adapter.root = function(path)
   return lib.files.match_root_pattern("package.json")(path)
 end
 
-local getJestCommand = jest_util.getJestCommand
-local getJestConfig = jest_util.getJestConfig
+local getCommand = jest_util.getCommand
 
 ---@param file_path? string
 ---@return boolean
@@ -111,17 +34,19 @@ function adapter.is_test_file(file_path)
   if string.match(file_path, "__tests__") then
     is_test_file = true
   end
-
-  for _, x in ipairs({ "spec", "e2e%-spec", "test", "unit", "regression", "integration" }) do
-    for _, ext in ipairs({ "js", "jsx", "coffee", "ts", "tsx" }) do
-      if string.match(file_path, "%." .. x .. "%." .. ext .. "$") then
+  -- https://nodejs.org/api/test.html#running-tests-from-the-command-line
+  for _, x in ipairs({ "/.*%.test", "/.*-test", "/.*_test", "/test-.*", "/test", "/test/.*/.*" }) do
+    for _, ext in ipairs({ "cjs", "mjs", "js", "ts" }) do
+      if string.match(file_path, x .. "%." .. ext .. "$") then
         is_test_file = true
         goto matched_pattern
       end
     end
   end
   ::matched_pattern::
-  return is_test_file and hasJestDependency(file_path)
+  print(file_path)
+  print(is_test_file)
+  return is_test_file
 end
 
 function adapter.filter_dir(name)
@@ -232,7 +157,7 @@ function adapter.discover_positions(path)
 
   local positions = lib.treesitter.parse_positions(path, query, {
     nested_tests = false,
-    build_position = 'require("neotest-jest").build_position',
+    build_position = 'require("neotest-node").build_position',
   })
 
   local parameterized_tests_positions =
@@ -401,22 +326,10 @@ function adapter.build_spec(args)
     end
   end
 
-  local binary = args.jestCommand or getJestCommand(pos.path)
-  local config = getJestConfig(pos.path) or "jest.config.js"
+  local binary = args.command or getCommand(pos.path)
   local command = vim.split(binary, "%s+")
-  if util.path.exists(config) then
-    -- only use config if available
-    table.insert(command, "--config=" .. config)
-  end
 
   vim.list_extend(command, {
-    "--no-coverage",
-    "--testLocationInResults",
-    "--verbose",
-    "--json",
-    "--outputFile=" .. results_path,
-    "--testNamePattern=" .. testNamePattern,
-    "--forceExit",
     escapeTestPattern(vim.fs.normalize(pos.path)),
   })
 
@@ -488,18 +401,11 @@ end
 setmetatable(adapter, {
   ---@param opts neotest.JestOptions
   __call = function(_, opts)
-    if is_callable(opts.jestCommand) then
-      getJestCommand = opts.jestCommand
-    elseif opts.jestCommand then
-      getJestCommand = function()
-        return opts.jestCommand
-      end
-    end
-    if is_callable(opts.jestConfigFile) then
-      getJestConfig = opts.jestConfigFile
-    elseif opts.jestConfigFile then
-      getJestConfig = function()
-        return opts.jestConfigFile
+    if is_callable(opts.command) then
+      getCommand = opts.command
+    elseif opts.command then
+      getCommand = function()
+        return opts.command
       end
     end
     if is_callable(opts.env) then

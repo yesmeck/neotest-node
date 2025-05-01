@@ -1,7 +1,7 @@
 {
   "name": "spec",
   "version": "1.0.0",
-  "description": "neotest-jest spec",
+  "description": "neotest-node spec",
   "main": "index.js",
   "license": "MIT",
   "dependencies": {

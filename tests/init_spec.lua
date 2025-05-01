@@ -1,10 +1,10 @@
 local stub = require("luassert.stub")
 local async = require("nio").tests
-local plugin = require("neotest-jest")({
+local plugin = require("neotest-node")({
   jestCommand = "jest",
 })
 local Tree = require("neotest.types").Tree
-require("neotest-jest-assertions")
+require("neotest-node-assertionss.init")
 A = function(...)
   print(vim.inspect(...))
 end

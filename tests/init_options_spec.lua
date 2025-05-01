@@ -1,6 +1,6 @@
 local async = require("nio").tests
 local Tree = require("neotest.types").Tree
-require("neotest-jest-assertions")
+require("neotest-node-assertionss.init")
 A = function(...)
   print(vim.inspect(...))
 end
@@ -14,7 +14,7 @@ end
 
 describe("build_spec with override", function()
   async.it("builds command", function()
-    local plugin = require("neotest-jest")({
+    local plugin = require("neotest-node")({
       jestCommand = binary_override,
       jestConfigFile = config_override,
       env = { override = "override", adapter_override = true },
