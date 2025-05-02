@@ -15,8 +15,6 @@ local parameterized_tests = require("neotest-node.parameterized-tests")
 ---@type neotest.Adapter
 local adapter = { name = "neotest-node" }
 
-local rootPackageJson = vim.fn.getcwd() .. "/package.json"
-
 adapter.root = function(path)
   return lib.files.match_root_pattern("package.json")(path)
 end
@@ -29,22 +27,22 @@ function adapter.is_test_file(file_path)
   if file_path == nil then
     return false
   end
-  local is_test_file = false
 
-  if string.match(file_path, "__tests__") then
-    is_test_file = true
-  end
   -- https://nodejs.org/api/test.html#running-tests-from-the-command-line
   for _, x in ipairs({ "/.*%.test", "/.*-test", "/.*_test", "/test-.*", "/test", "/test/.*/.*" }) do
     for _, ext in ipairs({ "cjs", "mjs", "js", "ts" }) do
       if string.match(file_path, x .. "%." .. ext .. "$") then
-        is_test_file = true
-        goto matched_pattern
+        local success, content = pcall(lib.files.read, file_path)
+
+        if success then
+          if string.match(content, "node:test") then
+            return true
+          end
+        end
       end
     end
   end
-  ::matched_pattern::
-  return is_test_file
+  return false
 end
 
 function adapter.filter_dir(name)
@@ -287,7 +285,6 @@ function adapter.build_spec(args)
     stream = function()
       return function()
         local new_results = stream_data()
-        print(new_results)
         local ok, parsed = pcall(vim.json.decode, new_results, { luanil = { object = true } })
 
         if not ok or not parsed.testResults then

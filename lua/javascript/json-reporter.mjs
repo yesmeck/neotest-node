@@ -72,7 +72,6 @@ class JsonReporter {
   toNeoTestRetuls() {
     const tests = {};
     const dfs = (node, namespace) => {
-      console.log(node);
       const id = [...namespace, node.name].join("::");
       tests[id] = {
         status: node.status
