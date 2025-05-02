@@ -242,11 +242,11 @@ function adapter.build_spec(args)
     testNamePattern = pos.is_parameterized
         and parameterized_tests.replaceTestParametersWithRegex(testNamePattern)
       or testNamePattern
-    testNamePattern = "'" .. testNamePattern
+    testNamePattern = "^" .. testNamePattern
     if pos.type == "test" then
-      testNamePattern = testNamePattern .. "'"
+      testNamePattern = testNamePattern .. "$"
     else
-      testNamePattern = testNamePattern .. "'"
+      testNamePattern = testNamePattern .. ""
     end
   end
 
@@ -255,7 +255,6 @@ function adapter.build_spec(args)
   local reporter = util.get_reporter_path()
 
   local argvs = {
-    "--no-warnings",
     "--test-reporter=" .. reporter,
     "--test-reporter-destination=" .. results_path,
   }
@@ -272,7 +271,6 @@ function adapter.build_spec(args)
 
   -- creating empty file for streaming results
   lib.files.write(results_path, "")
-  local stream_data, stop_stream = util.stream(results_path)
 
   return {
     command = command,
@@ -280,20 +278,7 @@ function adapter.build_spec(args)
     context = {
       results_path = results_path,
       file = pos.path,
-      stop_stream = stop_stream,
     },
-    stream = function()
-      return function()
-        local new_results = stream_data()
-        local ok, parsed = pcall(vim.json.decode, new_results, { luanil = { object = true } })
-
-        if not ok or not parsed.testResults then
-          return {}
-        end
-
-        return {}
-      end
-    end,
     strategy = getStrategyConfig(
       get_default_strategy_config(args.strategy, command, cwd) or {},
       args
@@ -305,9 +290,7 @@ end
 ---@async
 ---@param spec neotest.RunSpec
 ---@return neotest.Result[]
-function adapter.results(spec, result, tree)
-  spec.context.stop_stream()
-
+function adapter.results(spec)
   local output_file = spec.context.results_path
 
   local success, data = pcall(lib.files.read, output_file)

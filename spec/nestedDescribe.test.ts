@@ -1,12 +1,13 @@
+import { describe, it } from "node:test";
 
 describe('outer', () => {
-  describe('middle', function() {
+  describe('middle', function () {
     describe('inner', () => {
-      it('should do a thing', () => {
-        expect('hello').toEqual('hello');
+      it('should do a thing', (t) => {
+        t.assert.equal('hello', 'hello');
       });
-      it("this has a '", () => {
-        expect('hello').toEqual('hello');
+      it("this has a '", (t) => {
+        t.assert.equal('hello', 'hello');
       });
     });
   })

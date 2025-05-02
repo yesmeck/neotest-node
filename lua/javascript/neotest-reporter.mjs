@@ -1,4 +1,4 @@
-class JsonReporter {
+class NeotestReporter {
   constructor() {
     this.currentNode = null;
     this.depth = 0; this.lastIndex = 0;
@@ -74,7 +74,12 @@ class JsonReporter {
     const dfs = (node, namespace) => {
       const id = [...namespace, node.name].join("::");
       tests[id] = {
-        status: node.status
+        status: node.status,
+        short: `${node.name}: ${node.status}`,
+        location: {
+          line: node.line,
+          column: node.column,
+        }
       };
       if (node.children && node.children.length > 0) {
         node.children.forEach(child => dfs(child, [...namespace, node.name]));
@@ -89,15 +94,8 @@ class JsonReporter {
   }
 }
 
-function getLineLength() {
-  return Math.max(process.stdout.columns ?? 20, 20);
-}
-
 export default async function* dot(source) {
-  const reporter = new JsonReporter();
-  let count = 0;
-  let columns = getLineLength();
-  const failedTests = [];
+  const reporter = new NeotestReporter();
   for await (const event of source) {
     reporter.handleEvent(event);
   }

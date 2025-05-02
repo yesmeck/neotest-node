@@ -241,9 +241,9 @@ function M.stream(file_path)
 end
 
 function M.get_reporter_path()
-  local paths = vim.api.nvim_get_runtime_file("lua/javascript/json-reporter.mjs", true)
+  local paths = vim.api.nvim_get_runtime_file("lua/javascript/neotest-reporter.mjs", true)
   for _, path in ipairs(paths) do
-    if string.match(path, "^.*/neotest%-node/lua/javascript/json%-reporter%.mjs$") then
+    if string.match(path, "^.*/neotest%-node/lua/javascript/neotest%-reporter%.mjs$") then
       return path
     end
   end
