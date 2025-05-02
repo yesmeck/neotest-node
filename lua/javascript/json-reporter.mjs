@@ -1,9 +1,5 @@
-import { Transform } from 'stream';
-
-export default class JsonReporter extends Transform {
+class JsonReporter {
   constructor() {
-    super({ writableObjectMode: true });
-
     this.currentNode = null;
     this.depth = 0; this.lastIndex = 0;
     this.depthMap = new Map();
@@ -23,7 +19,7 @@ export default class JsonReporter extends Transform {
     Object.assign(this.depthMap.get(data.depth), data); 
   }
 
-  _transform(event, encoding, callback) {
+  handleEvent(event) {
     event.data.depth = event.data.nesting; 
     delete event.data.nesting;
     if (event.data?.testNumber) {
@@ -42,16 +38,20 @@ export default class JsonReporter extends Transform {
     switch (event.type) {
       case 'test:start':
         this.add(event.data);
-        callback(null, ''); break;
+        break;
       case 'test:pass':
       case 'test:fail':
         if (event.data?.details?.error) {
           event.data.error = JSON.parse(JSON.stringify(event.data.details.error));	// These values are not copyable: [stack], cause.[stack] cause.[message] cause.[name], [message]
           event.data.error.stack = event.data.details.error.stack;
           event.data.error.message = event.data.details.error.message.replaceAll("\n", " ").trim();
-          event.data.error.cause.stack = event.data.details.error.cause.stack;
-          event.data.error.cause.message = event.data.details.error.cause.message.replaceAll("\n", " ").trim();
-          event.data.error.cause.name = event.data.details.error.cause.name;
+          if (typeof event.data.cause === 'object') {
+            event.data.error.cause.stack = event.data.details.error.cause.stack;
+            event.data.error.cause.message = event.data.details.error.cause.message.replaceAll("\n", " ").trim();
+            event.data.error.cause.name = event.data.details.error.cause.name;
+          } else {
+            event.data.error.cause = event.data.details.error.cause;
+          }
           delete event.data.details.error;
 
           if (event.data?.details?.name) {
@@ -63,17 +63,46 @@ export default class JsonReporter extends Transform {
         (event.data?.details && Object.keys(event.data.details).length === 0) ? delete event.data.details : null;
 
         this.merge(event.data);
-
-        callback(null, '');
         break;
-      case 'test:diagnostic':
-        callback(null, JSON.stringify(this.root, null, 2));
       default: 
-        callback(null, '');
+        break;
     }
   }
+  
+  toNeoTestRetuls() {
+    const tests = {};
+    const dfs = (node, namespace) => {
+      console.log(node);
+      const id = [...namespace, node.name].join("::");
+      tests[id] = {
+        status: node.status
+      };
+      if (node.children && node.children.length > 0) {
+        node.children.forEach(child => dfs(child, [...namespace, node.name]));
+      }
+    }
+    this.root.forEach(node => dfs(node, [node.file]));
+    return tests;
+  }
 
-  _flush(callback) {
-    callback(null, JSON.stringify(this.root, null, 2));
+  flush() {
+    return JSON.stringify(this.toNeoTestRetuls(), null, 2);
   }
 }
+
+function getLineLength() {
+  return Math.max(process.stdout.columns ?? 20, 20);
+}
+
+export default async function* dot(source) {
+  const reporter = new JsonReporter();
+  let count = 0;
+  let columns = getLineLength();
+  const failedTests = [];
+  for await (const event of source) {
+    reporter.handleEvent(event);
+  }
+  yield reporter.flush();
+  console.log("Done.")
+};
+

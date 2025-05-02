@@ -315,26 +315,19 @@ function adapter.results(spec, result, tree)
 
   local success, data = pcall(lib.files.read, output_file)
 
-  print(data)
+  if not success then
+    logger.error("No test output file found ", output_file)
+    return {}
+  end
 
-  return {}
-  -- local success, data = pcall(lib.files.read, result.output)
+  local ok, parsed = pcall(vim.json.decode, data, { luanil = { object = true } })
 
-  -- if not success then
-  --   logger.error("neotest-node: could not read output: " .. data)
-  --   return {}
-  -- end
+  if not ok then
+    logger.error("Failed to parse test output json ", output_file)
+    return {}
+  end
 
-  -- local ok, parsed = pcall(vim.json.decode, data, { luanil = { object = true } })
-
-  -- if not ok then
-  --   logger.error("Failed to parse test output json ")
-  --   return {}
-  -- end
-
-  -- print(vim.inspect(parsed))
-
-  -- return parsed
+  return parsed
 end
 
 local is_callable = function(obj)
